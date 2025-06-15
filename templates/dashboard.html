@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard - Campus Assistant</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+        .schedule-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        .voice-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .logout {
+            background-color: #dc3545;
+        }
+        .logout:hover {
+            background-color: #c82333;
+        }
+        #schedule {
+            margin-top: 1rem;
+        }
+        #response {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Welcome to Campus Assistant</h1>
+            <button class="logout" onclick="logout()">Logout</button>
+        </div>
+
+        <div class="schedule-container">
+            <h2>Your Schedule</h2>
+            <div id="schedule">Loading schedule...</div>
+        </div>
+
+        <div class="voice-container">
+            <h2>Voice Assistant</h2>
+            <button onclick="startVoiceRecognition()">Start Voice Input</button>
+            <div id="response"></div>
+        </div>
+    </div>
+
+    <script>
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyB5t9VMbO7ZDX5-S5r4o_xduKmEnRVOxCY",
+            authDomain: "campu-6c4bb.firebaseapp.com",
+            projectId: "campu-6c4bb",
+            storageBucket: "campu-6c4bb.firebasestorage.app",
+            messagingSenderId: "150833806861",
+            appId: "1:150833806861:web:2493257d5065b167775f44",
+            measurementId: "G-14JW6W0DZ0"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        // Check authentication state immediately and set up listener
+        firebase.auth().onAuthStateChanged(async function(user) {
+            if (!user) {
+                window.location.href = '/';
+                return;
+            }
+            // Get fresh token and store it
+            const token = await user.getIdToken(true);
+            localStorage.setItem('firebaseToken', token);
+            loadSchedule();
+        });
+
+        // Add token refresh listener
+        setInterval(async () => {
+            const user = firebase.auth().currentUser;
+            if (user) {
+                const token = await user.getIdToken(true);
+                localStorage.setItem('firebaseToken', token);
+            }
+        }, 30 * 60 * 1000); // Refresh token every 30 minutes
+
+        async function logout() {
+            try {
+                await firebase.auth().signOut();
+                localStorage.removeItem('firebaseToken');
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Error signing out:', error);
+            }
+        }
+
+        // Load schedule with authorization header
+        async function loadSchedule() {
+            try {
+                const token = localStorage.getItem('firebaseToken');
+                if (!token) {
+                    throw new Error('No authentication token found');
+                }
+
+                const response = await fetch('/api/get-schedule', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Token expired or invalid, redirect to login
+                        window.location.href = '/';
+                        return;
+                    }
+                    throw new Error('Failed to load schedule');
+                }
+
+                const data = await response.json();
+                document.getElementById('schedule').innerHTML = data.schedule;
+            } catch (error) {
+                console.error('Error loading schedule:', error);
+                document.getElementById('schedule').innerHTML = 'Error loading schedule: ' + error.message;
+            }
+        }
+
+        // Voice recognition with authorization
+        function startVoiceRecognition() {
+            if (!('webkitSpeechRecognition' in window)) {
+                alert('Speech recognition is not supported in this browser');
+                return;
+            }
+
+            const recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onresult = async function(event) {
+                const text = event.results[0][0].transcript;
+                try {
+                    const token = localStorage.getItem('firebaseToken');
+                    if (!token) {
+                        throw new Error('No authentication token found');
+                    }
+
+                    const response = await fetch('/process-voice', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ text })
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 401) {
+                            // Token expired or invalid, redirect to login
+                            window.location.href = '/';
+                            return;
+                        }
+                        throw new Error('Failed to process voice input');
+                    }
+
+                    const data = await response.json();
+                    document.getElementById('response').textContent = data.reply;
+                } catch (error) {
+                    console.error('Error processing voice input:', error);
+                    document.getElementById('response').textContent = 'Error: ' + error.message;
+                }
+            };
+
+            recognition.start();
+        }
+    </script>
+</body>
+</html> 
