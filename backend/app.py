@@ -71,8 +71,6 @@ Please respond naturally and helpfully.
     return answer
 
 @app.route('/process-voice', methods=['POST'])
-@app.route('/process-voice', methods=['POST'])
-@app.route('/process-voice', methods=['POST'])
 def process_voice():
     try:
         data = request.get_json()
